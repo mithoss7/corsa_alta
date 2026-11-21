@@ -3,7 +3,8 @@
 | Champ | Valeur |
 | --- | --- |
 | Version du document | 0.4 |
-| Statut | Projet de spécification |
+| Statut | Référence de travail validée pour le prototype de faisabilité |
+| Date de validation | 21 novembre 2026 |
 | Périmètre | Première version jouable |
 | Référentiel | [ISO/IEC/IEEE 29148:2018](https://www.iso.org/standard/72089.html), structure adaptée au projet |
 

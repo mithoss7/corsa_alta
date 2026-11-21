@@ -17,6 +17,10 @@ Le projet suit les pratiques de développement logiciel utilisées en entreprise
 - Préparer des changements faciles à relire. Appuyer la revue de code sur des vérifications reproductibles et les automatiser dans l’intégration continue lorsque le projet le permet.
 - Pour une version distribuée, identifier la version et documenter les changements utiles au joueur.
 
+## Prototype Godot
+
+- Utiliser Godot 4.7.2 standard et le rendu Compatibility. Depuis la racine, vérifier les commandes avec `godot --headless --path prototype --fixed-fps 60 --script ../verification/essai_conduite.gd`. Les instructions d’export et de mesure figurent dans la [décision sur le moteur et le rendu](docs/decisions/0001-moteur-et-rendu.md).
+
 ## Mettre à jour ces consignes
 
 - Ajouter les conventions durables convenues avec l’utilisateur et les commandes de développement vérifiées au fur et à mesure qu’elles sont établies.

@@ -1,5 +1,14 @@
 extends CharacterBody3D
 
+const MASS_KG := 1200.0
+const YAW_INERTIA := 1950.0 # kg·m²
+const FRONT_ARM := 1.2 # metres ahead of the centre of mass
+const REAR_ARM := 1.4
+const GRAVITY := 9.81
+const ASPHALT_MU := 0.95
+const GRASS_MU := 0.40
+
+var yaw_rate := 0.0 # rad/s, positive for a right turn
 var steering := 0.0
 var reversing := false
 var previous_brake := false
@@ -24,7 +33,7 @@ func assemble(course) -> void:
 			wheel.mesh = tire
 			wheel.material_override = rubber
 			add_child(wheel)
-			wheel.position = Vector3(side*0.89,0.34,axle*1.3)
+			wheel.position = Vector3(side*0.89,0.34,-FRONT_ARM if axle == -1 else REAR_ARM)
 			wheel.rotation.z = PI/2
 	var collider := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -35,31 +44,49 @@ func assemble(course) -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 
 func drive(dt: float, throttle: bool, brake: bool, turn: float, grass: bool) -> void:
-	var forward := -transform.basis.z
-	var right := transform.basis.x
-	var speed := velocity.dot(forward)
+	var speed := velocity.dot(-transform.basis.z)
 	if brake and not previous_brake and velocity.length() < 0.12:
 		reversing = true
 	if not brake or throttle:
 		reversing = false
 	previous_brake = brake
 	steering = move_toward(steering, turn, dt * 2.3)
-	var drive_force := 0.0
+	var traction := 0.0
+	var braking := brake and not reversing and not throttle
 	if throttle:
-		drive_force = 5.5 if speed >= 0 else 10.0
+		traction = minf(6400.0, 90000.0 / maxf(absf(speed), 1.0))
 	elif reversing and speed > -5.0:
-		drive_force = -3.0
-	elif brake and speed > 0:
-		drive_force = -minf(10.5, speed / dt)
-	var friction := 4.0 if grass else 9.6
-	var rolling_drag := 1.9 if grass else 0.23
-	var drag_factor := 0.022 if grass else 0.0035
-	velocity = velocity.move_toward(Vector3.ZERO, (rolling_drag + velocity.length_squared()*drag_factor)*dt)
-	velocity += forward * drive_force * dt
-	var lateral := velocity.dot(right)
-	var grip := maxf(0.45, sqrt(maxf(0.0, 1.0 - pow(minf(1.0, absf(drive_force)/friction), 2))))
-	velocity -= right * clampf(lateral, -friction*grip*dt, friction*grip*dt)
-	var yaw_rate := speed * tan(steering * 0.54) / 2.55
-	var yaw_limit := friction / maxf(2.5, absf(speed)) * 1.25
-	rotate_y(-clampf(yaw_rate, -yaw_limit, yaw_limit) * dt)
+		traction = -3200.0
+	# Short steps keep the stiff tyre response stable, including near standstill.
+	var steps := maxi(1, ceili(dt * 240.0))
+	for step in range(steps):
+		integrate_forces(dt / steps, traction, braking, grass)
 	move_and_slide()
+
+func integrate_forces(dt: float, traction: float, braking: bool, grass: bool) -> void:
+	var right := transform.basis.x
+	var front_share := REAR_ARM / (FRONT_ARM + REAR_ARM)
+	var front := axle_force(FRONT_ARM, front_share, steering * 0.54, 68000.0, traction, braking, grass, dt)
+	var rear := axle_force(-REAR_ARM, 1.0 - front_share, 0.0, 76000.0, traction, braking, grass, dt)
+	var air_resistance := -0.40 * velocity.length() * velocity
+	velocity += (front + rear + air_resistance) * (dt / MASS_KG)
+	var yaw_moment := FRONT_ARM * front.dot(right) - REAR_ARM * rear.dot(right)
+	yaw_rate += yaw_moment * dt / YAW_INERTIA
+	rotate_y(-yaw_rate * dt)
+
+func axle_force(arm: float, share: float, angle: float, stiffness: float, traction: float,
+		braking: bool, grass: bool, dt: float) -> Vector3:
+	var wheel_forward := (-transform.basis.z).rotated(Vector3.UP, -angle)
+	var wheel_right := wheel_forward.cross(Vector3.UP)
+	var contact_velocity := velocity + transform.basis.x * (arm * yaw_rate)
+	var longitudinal := contact_velocity.dot(wheel_forward)
+	var lateral := contact_velocity.dot(wheel_right)
+	var load_n := MASS_KG * GRAVITY * share
+	var rolling := load_n * (0.12 if grass else 0.015)
+	var resistance := rolling + (11500.0 * share if braking else 0.0)
+	# Dissipative forces can stop a wheel but must not propel it in reverse.
+	var fx := traction * share - signf(longitudinal) * minf(resistance, absf(longitudinal) * MASS_KG * share / dt)
+	var slip_angle := atan2(lateral, maxf(absf(longitudinal), 1.5))
+	var fy := -stiffness * slip_angle
+	var forces := Vector2(fx, fy).limit_length(load_n * (GRASS_MU if grass else ASPHALT_MU))
+	return wheel_forward * forces.x + wheel_right * forces.y

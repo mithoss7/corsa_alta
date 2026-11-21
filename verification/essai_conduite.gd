@@ -23,6 +23,37 @@ func check(ok: bool, description: String) -> void:
 		failed = true
 		push_error(description)
 
+func braking_distance(grass: bool) -> float:
+	session.reset_car()
+	session.state = "running"
+	session.car.position.x = -8.0 if grass else 0.0
+	session.car.velocity = Vector3.FORWARD * (80.0 / 3.6)
+	key(KEY_S, true)
+	for tick in range(500):
+		await physics_frame
+		if session.car.velocity.length() < 0.05:
+			break
+	key(KEY_S, false)
+	check(session.car.velocity.length() < 0.05, "La voiture doit atteindre l’arrêt")
+	return -session.car.position.z
+
+func angle_after_twenty_metres(kmh: float) -> float:
+	session.reset_car()
+	# An isolated dry skidpad gives both speeds the same surface and no walls.
+	session.state = "ready"
+	session.car.position = Vector3(100,0,0)
+	session.car.velocity = Vector3.FORWARD * (kmh / 3.6)
+	var distance := 0.0
+	for tick in range(300):
+		await physics_frame
+		var previous: Vector3 = session.car.position
+		session.car.drive(1.0 / Engine.physics_ticks_per_second, false, false, 1.0, false)
+		distance += previous.distance_to(session.car.position)
+		if distance >= 20.0:
+			break
+	check(distance >= 20.0, "La mesure du virage doit couvrir vingt mètres")
+	return atan2(session.car.velocity.x, -session.car.velocity.z)
+
 func run() -> void:
 	session = load("res://hairpin.tscn").instantiate()
 	root.add_child(session)
@@ -80,6 +111,16 @@ func run() -> void:
 	key(KEY_ENTER,false)
 	await frames(2)
 	check(session.state == "countdown" and session.elapsed == 0, "Nouvel essai depuis le résultat")
+	var dry_distance := await braking_distance(false)
+	var grass_distance := await braking_distance(true)
+	# d = v²/(2 μg) on level ground. Air resistance and discrete steps shorten the stop slightly.
+	for sample in [[dry_distance,session.car.ASPHALT_MU],[grass_distance,session.car.GRASS_MU]]:
+		var ideal: float = (80.0 / 3.6) ** 2 / (2.0 * sample[1] * session.car.GRAVITY)
+		check(absf(sample[0] - ideal) < ideal * 0.05, "Distance d’arrêt incompatible avec l’adhérence")
+	print("Freinage 80–0 km/h : %.2f m sur asphalte, %.2f m sur herbe" % [dry_distance, grass_distance])
+	var slow_angle := await angle_after_twenty_metres(40)
+	var fast_angle := await angle_after_twenty_metres(80)
+	check(slow_angle > fast_angle and fast_angle > 0, "À braquage identique, la voiture doit tourner plus large à grande vitesse")
 	if not failed:
 		print("ESSAI CONDUITE OK")
 	quit(1 if failed else 0)

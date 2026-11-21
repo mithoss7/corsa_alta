@@ -61,6 +61,7 @@ func reset_car() -> void:
 	car.position = course.center_at(0)
 	car.rotation = Vector3.ZERO
 	car.velocity = Vector3.ZERO
+	car.yaw_rate = 0
 	car.steering = 0
 	car.previous_brake = false
 	car.reversing = false

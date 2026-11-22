@@ -14,6 +14,7 @@ var suspended_state := ""
 var countdown := 0.0
 var elapsed := 0.0
 var benchmark := false
+var downhill := false
 var bench_start := 0
 var last_frame := 0
 var intervals: Array[int] = []
@@ -49,17 +50,34 @@ func _ready() -> void:
 	for label in [hud,info]:
 		label.add_theme_constant_override("outline_size",6)
 		label.add_theme_color_override("font_outline_color",Color("#242424"))
-	reset_car()
-	info.text = "Corsa Alta · Épingle d’essai\nEntrée pour démarrer\nZ accélérer · S freiner / reculer · Q D tourner"
+	show_start()
 	benchmark = "--mesure" in OS.get_cmdline_user_args()
 	if benchmark:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 		info.hide()
 		bench_start = Time.get_ticks_usec()
 
+func show_start() -> void:
+	state = "ready"
+	reset_car()
+	var title := "Épingle sur le plat"
+	if course.ramp:
+		title = "Descente −10 %" if downhill else "Montée +10 %"
+	info.text = "%s\nF1 Épingle · F2 Montée · F3 Descente\nEntrée pour démarrer\nZ accélérer · S freiner / reculer · Q D tourner" % title
+
+func select_course(ramp: bool, reverse_run: bool) -> void:
+	if course.ramp != ramp:
+		remove_child(course)
+		course.queue_free()
+		course = Course.new()
+		course.ramp = ramp
+		add_child(course)
+	downhill = reverse_run
+	show_start()
+
 func reset_car() -> void:
-	car.position = course.center_at(0)
-	car.rotation = Vector3.ZERO
+	car.position = course.to_global(course.center_at(course.length_m() if downhill else 0.0))
+	car.basis = course.global_basis * Basis(Vector3.UP, PI if downhill else 0.0)
 	car.velocity = Vector3.ZERO
 	car.yaw_rate = 0
 	car.steering = 0
@@ -87,7 +105,7 @@ func _notification(what: int) -> void:
 func pause_run() -> void:
 	suspended_state = state
 	state = "paused"
-	info.text = "Pause\nÉchap reprendre · R recommencer · F10 quitter"
+	info.text = "Pause\nÉchap reprendre · R recommencer · F10 quitter\nF1 Épingle · F2 Montée · F3 Descente"
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo:
@@ -96,6 +114,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_tree().quit()
 	elif benchmark:
 		return
+	elif state in ["ready","paused","finished"] and event.keycode in [KEY_F1,KEY_F2,KEY_F3]:
+		select_course(event.keycode != KEY_F1, event.keycode == KEY_F3)
 	elif event.keycode == KEY_ESCAPE:
 		if state == "paused":
 			state = suspended_state
@@ -118,14 +138,14 @@ func _physics_process(dt: float) -> void:
 			info.text = ""
 	elif state == "running":
 		var turn := float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_Q))
-		var grass := course.road_distance(car.position) > course.ROAD_HALF_WIDTH
-		var before := car.position
+		var before := course.to_local(car.position)
+		var grass := course.road_distance(before) > course.ROAD_HALF_WIDTH
 		car.drive(dt,Input.is_key_pressed(KEY_Z),Input.is_key_pressed(KEY_S),turn,grass)
 		elapsed += dt
-		var finish := course.center_at(course.LENGTH)
-		if before.z < finish.z and car.position.z >= finish.z and absf(car.position.x-finish.x) <= course.ROAD_HALF_WIDTH:
+		var after := course.to_local(car.position)
+		if course.crossed_finish(before, after, downhill):
 			state = "finished"
-			info.text = "Arrivée · %.2f s\nEntrée pour recommencer" % elapsed
+			info.text = "Arrivée · %.2f s\nEntrée pour recommencer\nF1 Épingle · F2 Montée · F3 Descente" % elapsed
 	follow(1.0 - exp(-8.0 * dt))
 	hud.text = "%d km/h     %.2f s" % [roundi(car.velocity.length()*3.6),elapsed]
 

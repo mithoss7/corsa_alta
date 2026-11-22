@@ -1,13 +1,19 @@
 # Corsa Alta
 
-Le prototype « Épingle d’essai » est un contre-la-montre en 3D au clavier. Son parcours de 280 m permet d’essayer le freinage et le braquage dans une épingle à droite.
+Le prototype Windows propose une épingle de 280 m sur le plat et une rampe rectiligne de 240 m à 10 %, praticable en montée comme en descente.
 
 ## Lancer le prototype sur Windows
 
 - **Depuis un export Windows**, double-cliquer sur `CorsaAlta.exe`. Sur le poste de développement, il se trouve dans le dossier `build`.
 - **Depuis les sources GitHub**, cloner ou télécharger le dépôt, ouvrir le gestionnaire de projets de [Godot 4.7.2 standard](https://godotengine.org/download/archive/4.7.2-stable/), importer [prototype/project.godot](prototype/project.godot), ouvrir le projet et appuyer sur **F5**.
 
-## Faire un essai
+## Comparer la montée et la descente
+
+À l’accueil, choisir **F2** pour partir du pied de la rampe ou **F3** pour partir du sommet, puis **Entrée**. Accélérer avec **Z**. Au niveau des deux poteaux bleus, à mi-parcours, relâcher **Z** et maintenir **S**. Refaire le passage dans l’autre sens en visant la même vitesse au repère. Pour changer de parcours pendant un essai, passer d’abord en pause avec **Échap**. **F1** ramène à l’épingle plate.
+
+À 80 km/h sur asphalte sec, le test automatisé mesure 23,71 m en montée, 26,08 m sur le plat et 29,28 m en descente. Les distances sont mesurées le long de la chaussée à partir de l’appui sur le frein.
+
+## Essayer l’épingle plate
 
 1. Appuyer sur **Entrée** et attendre la fin du décompte. Accélérer avec **Z**, freiner avec **S** et tourner avec **Q** ou **D**. Maintenir la touche de direction pour augmenter progressivement le braquage.
 2. Au premier passage, freiner avant l’épingle, tourner à droite et rejoindre la ligne d’arrivée. Noter le chrono et appuyer sur **Entrée** pour repartir.

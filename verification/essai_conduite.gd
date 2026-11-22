@@ -27,15 +27,81 @@ func braking_distance(grass: bool) -> float:
 	session.reset_car()
 	session.state = "running"
 	session.car.position.x = -8.0 if grass else 0.0
-	session.car.velocity = Vector3.FORWARD * (80.0 / 3.6)
+	var start: Vector3 = session.car.position
+	session.car.velocity = -session.car.basis.z * (80.0 / 3.6)
 	key(KEY_S, true)
 	for tick in range(500):
 		await physics_frame
 		if session.car.velocity.length() < 0.05:
 			break
-	key(KEY_S, false)
 	check(session.car.velocity.length() < 0.05, "La voiture doit atteindre l’arrêt")
-	return -session.car.position.z
+	var stop: Vector3 = session.car.position
+	await frames(60)
+	check(session.car.position.distance_to(stop) < 0.01, "Frein maintenu : la voiture doit rester arrêtée")
+	key(KEY_S, false)
+	check(absf(session.course.to_local(stop).y) < 0.002, "Le freinage doit rester dans le plan de la route")
+	return start.distance_to(stop)
+
+func select_from_menu(code: Key) -> void:
+	if session.state == "running":
+		key(KEY_ESCAPE, true)
+		key(KEY_ESCAPE, false)
+	key(code, true)
+	key(code, false)
+	await frames(2)
+	check(session.state == "ready", "La sélection doit préparer un nouveau départ")
+
+func verify_grade(dry_distance: float) -> void:
+	var distances: Array[float] = []
+	var speeds: Array[float] = []
+	for code: Key in [KEY_F2,KEY_F3]:
+		await select_from_menu(code)
+		var uphill := code == KEY_F2
+		check(session.course.ramp and session.downhill != uphill, "Sens sélectionné")
+		var start: Vector3 = session.car.position
+		var destination: Vector3 = session.course.to_global(session.course.center_at(session.course.length_m() if uphill else 0.0))
+		var along := destination - start
+		var grade := along.y / Vector2(along.x, along.z).length()
+		check(absf(grade - (0.10 if uphill else -0.10)) < 0.0001, "Pente signée du trajet")
+		key(KEY_ENTER, true)
+		key(KEY_ENTER, false)
+		await frames(120)
+		check(session.car.position.is_equal_approx(start), "La voiture reste en place au décompte")
+		key(KEY_Z, true)
+		for tick in range(75):
+			if session.state != "countdown":
+				break
+			await physics_frame
+		check(session.state == "running", "Départ au clavier sur la rampe")
+		await frames(120)
+		key(KEY_Z, false)
+		speeds.append(session.car.velocity.length() * 3.6)
+		var rise: float = session.car.position.y - start.y
+		check(rise > 0 if uphill else rise < 0, "La voiture suit le dénivelé dans le sens choisi")
+		key(KEY_D, true)
+		await frames(30)
+		key(KEY_D, false)
+		check(session.car.yaw_rate > 0 and session.car.basis.y.is_equal_approx(session.course.basis.y), "Le lacet suit la normale à la route")
+		check(absf(session.course.to_local(session.car.position).y) < 0.002, "La trajectoire braquée reste sur la route inclinée")
+		var distance := await braking_distance(false)
+		distances.append(distance)
+		var angle := atan(grade)
+		var decel: float = session.car.GRAVITY * (session.car.ASPHALT_MU * cos(angle) + sin(angle))
+		var ideal := (80.0 / 3.6) ** 2 / (2.0 * decel)
+		check(absf(distance - ideal) < 0.05 * ideal, "Distance d’arrêt sur la pente")
+		# Start near the opposite end and cross the finish under its own power.
+		session.reset_car()
+		session.car.position = destination - along.normalized() * 1.5
+		key(KEY_Z, true)
+		await frames(140)
+		key(KEY_Z, false)
+		check(session.state == "finished", "La ligne doit conclure le trajet dans le sens choisi")
+	check(distances[0] < dry_distance and dry_distance < distances[1], "Ordre des trois distances d’arrêt")
+	check(speeds[0] > 0 and speeds[1] > speeds[0], "L’accélération à commande égale doit être supérieure en descente")
+	print("Plein gaz pendant 2 s : montée %.2f km/h, descente %.2f km/h" % [speeds[0], speeds[1]])
+	print("80–0 km/h, distance sur route : montée +10 %% %.2f m, plat %.2f m, descente −10 %% %.2f m" % [distances[0],dry_distance,distances[1]])
+	await select_from_menu(KEY_F1)
+	check(not session.course.ramp and session.car.basis.y.is_equal_approx(Vector3.UP), "Retour à l’épingle plate")
 
 func angle_after_twenty_metres(kmh: float) -> float:
 	session.reset_car()
@@ -121,6 +187,7 @@ func run() -> void:
 	var slow_angle := await angle_after_twenty_metres(40)
 	var fast_angle := await angle_after_twenty_metres(80)
 	check(slow_angle > fast_angle and fast_angle > 0, "À braquage identique, la voiture doit tourner plus large à grande vitesse")
+	await verify_grade(dry_distance)
 	if not failed:
 		print("ESSAI CONDUITE OK")
 	quit(1 if failed else 0)

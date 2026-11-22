@@ -65,6 +65,9 @@ func drive(dt: float, throttle: bool, brake: bool, turn: float, grass: bool) -> 
 
 func integrate_forces(dt: float, traction: float, braking: bool, grass: bool) -> void:
 	var right := transform.basis.x
+	var normal := transform.basis.y
+	# Integrate weight in the road plane first so the brakes can hold at rest.
+	velocity += Vector3.DOWN.slide(normal) * GRAVITY * dt
 	var front_share := REAR_ARM / (FRONT_ARM + REAR_ARM)
 	var front := axle_force(FRONT_ARM, front_share, steering * 0.54, 68000.0, traction, braking, grass, dt)
 	var rear := axle_force(-REAR_ARM, 1.0 - front_share, 0.0, 76000.0, traction, braking, grass, dt)
@@ -72,16 +75,17 @@ func integrate_forces(dt: float, traction: float, braking: bool, grass: bool) ->
 	velocity += (front + rear + air_resistance) * (dt / MASS_KG)
 	var yaw_moment := FRONT_ARM * front.dot(right) - REAR_ARM * rear.dot(right)
 	yaw_rate += yaw_moment * dt / YAW_INERTIA
-	rotate_y(-yaw_rate * dt)
+	rotate_object_local(Vector3.UP, -yaw_rate * dt)
 
 func axle_force(arm: float, share: float, angle: float, stiffness: float, traction: float,
 		braking: bool, grass: bool, dt: float) -> Vector3:
-	var wheel_forward := (-transform.basis.z).rotated(Vector3.UP, -angle)
-	var wheel_right := wheel_forward.cross(Vector3.UP)
+	var normal := transform.basis.y
+	var wheel_forward := (-transform.basis.z).rotated(normal, -angle)
+	var wheel_right := wheel_forward.cross(normal)
 	var contact_velocity := velocity + transform.basis.x * (arm * yaw_rate)
 	var longitudinal := contact_velocity.dot(wheel_forward)
 	var lateral := contact_velocity.dot(wheel_right)
-	var load_n := MASS_KG * GRAVITY * share
+	var load_n := MASS_KG * GRAVITY * normal.y * share
 	var rolling := load_n * (0.12 if grass else 0.015)
 	var resistance := rolling + (11500.0 * share if braking else 0.0)
 	# Dissipative forces can stop a wheel but must not propel it in reverse.

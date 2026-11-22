@@ -4,9 +4,16 @@ const STRAIGHT := 110.0
 const RADIUS := 19.0
 const ROAD_HALF_WIDTH := 4.6
 const LENGTH := 2.0 * STRAIGHT + PI * RADIUS
+const RAMP_LENGTH := 240.0 # Distance along the asphalt in metres.
+const GRADE := 0.10 # Rise / horizontal run.
+
+var ramp := false
+
+func length_m() -> float:
+	return RAMP_LENGTH if ramp else LENGTH
 
 func center_at(distance: float) -> Vector3:
-	if distance < STRAIGHT:
+	if ramp or distance < STRAIGHT:
 		return Vector3(0, 0, -distance)
 	var arc := distance - STRAIGHT
 	if arc < PI * RADIUS:
@@ -15,9 +22,23 @@ func center_at(distance: float) -> Vector3:
 	return Vector3(2 * RADIUS, 0, -STRAIGHT + arc - PI * RADIUS)
 
 func road_distance(p: Vector3) -> float:
+	if ramp:
+		return absf(p.x)
 	if p.z < -STRAIGHT:
 		return absf(Vector2(p.x - RADIUS, p.z + STRAIGHT).length() - RADIUS)
 	return minf(absf(p.x), absf(p.x - 2.0 * RADIUS))
+
+func crossed_finish(before: Vector3, after: Vector3, downhill: bool) -> bool:
+	var end_distance := 0.0 if downhill else length_m()
+	var finish := center_at(end_distance)
+	var approach := center_at(end_distance + (1.0 if downhill else -1.0))
+	var direction := (finish - approach).normalized()
+	var from_line := (before - finish).dot(direction)
+	var to_line := (after - finish).dot(direction)
+	if from_line >= 0 or to_line < 0:
+		return false
+	var crossing := before.lerp(after, -from_line / (to_line - from_line))
+	return absf((crossing - finish).dot(direction.cross(Vector3.UP))) <= ROAD_HALF_WIDTH
 
 func material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -41,7 +62,7 @@ func strip(offset: float, width: float, height: float, mat: Material) -> void:
 	var previous_a := Vector3.ZERO
 	var previous_b := Vector3.ZERO
 	for step in range(166):
-		var distance := lerpf(-20, LENGTH + 20, step / 165.0)
+		var distance := lerpf(-20, length_m() + 20, step / 165.0)
 		var center := center_at(distance) + Vector3.UP * height
 		var side := (center_at(distance + 0.1) - center_at(distance - 0.1)).normalized().cross(Vector3.UP)
 		var a := center + side * (offset - width / 2)
@@ -58,6 +79,8 @@ func strip(offset: float, width: float, height: float, mat: Material) -> void:
 	add_child(ribbon)
 
 func _ready() -> void:
+	if ramp:
+		rotation.x = atan(GRADE)
 	box(self, Vector3(0,-0.6,0), Vector3(1600,1,1600), material(Color("#6f865a")))
 	var asphalt := material(Color("#49494a"))
 	var paint := material(Color("#ddd7b9"))
@@ -66,10 +89,20 @@ func _ready() -> void:
 	strip(0, 2 * ROAD_HALF_WIDTH, 0, asphalt)
 	for edge in [-1, 1]:
 		strip(edge * (ROAD_HALF_WIDTH - 0.24), 0.13, 0.018, paint)
-	for distance in range(0, int(LENGTH), 10):
+	for distance in range(0, int(length_m()), 10):
 		var mark := box(self, center_at(distance) + Vector3.UP * 0.025, Vector3(0.13,0.02,2.5), paint)
-		mark.look_at(center_at(distance + 0.5) + Vector3.UP * 0.025)
-	box(self, center_at(LENGTH) + Vector3.UP * 0.04, Vector3(9,0.03,0.55), paint)
+		mark.basis = Basis.looking_at(center_at(distance + 0.5) - center_at(distance))
+	box(self, center_at(length_m()) + Vector3.UP * 0.04, Vector3(9,0.03,0.55), paint)
+	if ramp:
+		box(self, center_at(0) + Vector3.UP * 0.04, Vector3(9,0.03,0.55), paint)
+		var marker := material(Color("#306aa3"))
+		for side in [-1, 1]:
+			box(self, center_at(RAMP_LENGTH / 2) + Vector3(side * (ROAD_HALF_WIDTH + 0.7),0.7,0), Vector3(0.35,1.4,0.35), marker)
+	else:
+		add_median()
+	add_landscape(paint)
+
+func add_median() -> void:
 	# The rocky median physically separates the two straights.
 	var ridge := StaticBody3D.new()
 	add_child(ridge)
@@ -82,6 +115,8 @@ func _ready() -> void:
 	var collision := CollisionShape3D.new()
 	collision.shape = shape
 	ridge.add_child(collision)
+
+func add_landscape(paint: Material) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 417
 	var evergreen := CylinderMesh.new()
@@ -98,7 +133,8 @@ func _ready() -> void:
 		var height_scale := rng.randf_range(0.75,1.7)
 		tree.scale = Vector3.ONE * height_scale
 		tree.position = Vector3(x,3.5*height_scale-0.1,rng.randf_range(-195,70))
-	for distance in range(5, int(LENGTH), 12):
+		tree.rotation.x = -rotation.x
+	for distance in range(5, int(length_m()), 12):
 		var normal := (center_at(distance + 1) - center_at(distance)).normalized().cross(Vector3.UP)
 		var outside := center_at(distance) - normal * (ROAD_HALF_WIDTH + 0.6)
 		box(self, outside + Vector3.UP*0.43, Vector3(0.16,0.86,0.16), paint)
@@ -113,4 +149,6 @@ func _ready() -> void:
 		mountain.material_override = material(Color("#667567").darkened(rng.randf_range(0,0.25)))
 		add_child(mountain)
 		var angle := TAU * i / 36.0
-		mountain.position = Vector3(19 + cos(angle)*260, -3, -50 + sin(angle)*260)
+		# Keep the distant skyline fixed in world space when the test road tilts.
+		mountain.global_position = Vector3(19 + cos(angle)*260, -3, -50 + sin(angle)*260)
+		mountain.global_rotation = Vector3.ZERO

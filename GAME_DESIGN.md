@@ -115,6 +115,7 @@ Les moyennes G3D Mark consultées sont de 1 416 points pour la famille GT 740 et
 ## 4. Points à vérifier sur le prototype
 
 - Régler et essayer sur une épingle le freinage, la perte d’adhérence, sa récupération au clavier et l’effet de l’herbe.
+- Pour CA-014, comparer le freinage en ligne droite à 80 km/h sur asphalte sec, sur le plat et dans les deux sens d’une rampe à 10 %. La distance mesurée doit augmenter de la montée vers le plat puis la descente et rester à moins de 5 % de la distance théorique correspondant à chaque pente. À commande d’accélérateur identique pendant deux secondes depuis l’arrêt, la vitesse doit être supérieure en descente.
 - Retour d’essai sur CA-014 : privilégier la cohérence avec les lois de Newton, même si l’épingle demande de freiner tôt. Vérifier la distance d’arrêt en ligne droite sur chaque surface et l’élargissement de la trajectoire à vitesse élevée. Le modèle et ses hypothèses sont consignés dans la [décision sur la dynamique du véhicule](docs/decisions/0002-dynamique-du-vehicule.md).
 - Pour quantifier les dépassements « rares » de CA-030, le seuil proposé est d’au moins 99 % des intervalles de rendu à 16,67 ms ou moins sur un trajet complet. Confirmer ce seuil avec les premières mesures et examiner les saccades les plus longues.
 
